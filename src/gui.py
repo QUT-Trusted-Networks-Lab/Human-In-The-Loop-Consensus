@@ -13,6 +13,7 @@ from .message import Request, Response, Bundle
 from .api import GmailAPI
 from .stateSingleton import StateSingleton
 from .blockchain import Block
+from .addressParser import AddressParser
 
 # ---------- Global values ---------- #
 emailRegex = re.compile(r"\w+@\w+?\.com")
@@ -596,7 +597,8 @@ class ValidRequestWidget(BaseFrame):
 
         # Update the table
         self.tree.delete(*self.tree.get_children()) # Wipe tree state
-        emails = emailRegex.findall(self.globals.recipients)
+        _addressParser = AddressParser(self.globals.recipients)
+        emails = _addressParser.recipients
         for email in emails:
             processed = email in self.globals.responses
             processed = "Yes" if processed else "No"
@@ -732,9 +734,9 @@ class ValidRequestRecipientSearch(BaseFrame):
         searchResult = []
         for r in _searchResult:
             subject, sender, date, emailID, recipients = r
-            emailAddress = emailRegex.search(sender)
+            _addressParser = AddressParser(sender)
+            emailAddress = _addressParser.recipients[0]
             assert emailAddress != None # Error checker for debugging, this shouldn't make it live
-            emailAddress = emailAddress[0]
 
             if emailAddress.lower() != self.emailAddress.get():
                 continue
@@ -832,9 +834,9 @@ class RecipientSearchResultsTable(BaseFrame):
             item = self.tree.selection()[0]
             responseValue = self.tree.item(item,"values")
             subject, sender, date, emailID, recipients = responseValue
-            emailAddress = emailRegex.search(sender)
-            assert emailAddress != None # Error checker for debugging, this shouldn't make it live
-            sender = emailAddress[0]
+            _addressParser = AddressParser(sender)
+            sender = _addressParser.recipients[0]
+            assert sender != None # Error checker for debugging, this shouldn't make it live
 
             # Obtain the email message
             apiClient = GmailAPI(self.globals.CREDENTIALS_DIR)
