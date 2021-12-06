@@ -6,18 +6,7 @@
 import pickle, json, os
 from hashlib import sha256
 
-from .message import Bundle
-
-genesisEmail = '''
-# ---------- START BLOCKCHAIN BUNDLE ---------- #
-# REQUEST ID: genesis
-# REQUEST CONTENTS: genesis
-# ACTION REQUESTED: approval
-# RECIPIENTS: genesis@genesis.com
-# RESPONSES: I genesis
-# VERDICT: ACCEPTED
-# ---------- END BLOCKCHAIN BUNDLE ---------- #
-'''
+from .message import Request
 
 class Block:
     '''
@@ -25,17 +14,45 @@ class Block:
     is formed. It contains a JSON stringified Bundle representation,
     alongside its own hash and the hash of the previous block in the chain.
     '''
-    def __init__(self, bundle, previous_hash):
-        assert type(bundle).__name__ == "Bundle"
-        
-        self.requestID = bundle.request.id
-        self.bundle = bundle.format_bundle_as_json()
+    def __init__(self, previous_hash):
         self.previous_hash = previous_hash
-        self.hash = self.compute_hash()
     
     def compute_hash(self):
         block_string = json.dumps(self.__dict__, sort_keys=True)
         return sha256(block_string.encode()).hexdigest()
+
+class BundleBlock(Block):
+    '''
+    A BundleBlock contains a JSON stringified Bundle representation,
+    alongside its own hash and the hash of the previous block in the chain.
+    '''
+    def __init__(self, bundle, previous_hash):
+        assert type(bundle).__name__ == "Bundle"
+        super().__init__(previous_hash)
+        
+        self.requestID = bundle.request.id
+        self.bundle = bundle.format_bundle_as_json()
+        
+        self.hash = self.compute_hash()
+
+class RequestBlock(Block):
+    '''
+    A RequestBlock contains a JSON stringified Request representation,
+    alongside its own hash and the hash of the previous block in the chain.
+    
+    This block is special since its hash is pre-computed before being made
+    into a block; as such, the requestID and hash fields are redundant.
+    '''
+    def __init__(self, request, previous_hash):
+        assert type(request).__name__ == "Request"
+        super().__init__(previous_hash)
+        
+        self.requestID = request.id
+        self.message = request.message
+        self.action = request.action
+        self.date = request.date
+        
+        self.hash = request.id
 
 class Blockchain:
     '''
@@ -48,24 +65,62 @@ class Blockchain:
         self.create_genesis_block()
  
     def create_genesis_block(self):
-        fake_bundle = Bundle()
-        fake_bundle.parse_from_email(genesisEmail)
+        genesisRequest = Request()
+        genesisRequest.create_new("Genesis", "approval")
         
-        genesis_block = Block(fake_bundle, "0")
+        genesis_block = RequestBlock(genesisRequest, "0")
         self.chain.append(genesis_block)
     
     def add_block(self, block):
-        previous_hash = self.get_last_block().hash
-        previous_requestID = self.get_last_block().requestID
-        if previous_hash != block.previous_hash: # Prevent incorrect chaining
+        # Prevent incorrect chaining
+        previousHash = self.get_last_block().hash
+        if previousHash != block.previous_hash: 
             return False
-        if block.requestID == previous_requestID: # Prevent duplicate addition
+        
+        # Prevent duplication (simple)
+        thisHash = block.hash
+        if self.find_block_by_hash(thisHash) != False:
             return False
+        
+        # Prevent duplication (complex)
+        '''
+        This check is necessary since every time the controller creates
+        a Bundle it will technically have a new hash. We want to prevent
+        repeat Bundles being added to the blockchain, so we need to handle
+        this especially.
+        '''
+        if type(block).__name__ == "BundleBlock":
+            thisRequestID = block.requestID
+            if self.find_bundleblock_by_requestID(thisRequestID) != False:
+                return False
+        
+        # Write to blockchain if all checks pass
         self.chain.append(block)
         return True
         
     def get_last_block(self):
         return self.chain[-1]
+    
+    def find_block_by_hash(self, hash):
+        '''
+        Slowly crawls through the blockchain like a linked list to find
+        a block with the provided hash.
+        '''
+        for b in self.chain:
+            if b.hash == hash:
+                return b
+        return False
+    
+    def find_bundleblock_by_requestID(self, requestID):
+        '''
+        Slowly crawls through the blockchain like a linked list to find
+        a BundleBlock with the provided requestID.
+        '''
+        
+        for b in self.chain:
+            if b.requestID == requestID and type(b).__name__ == "BundleBlock":
+                return b
+        return False
 
 class LocalBlockchain(Blockchain):
     '''
@@ -75,8 +130,12 @@ class LocalBlockchain(Blockchain):
     def __init__(self, localChainPickle=None):
         Blockchain.__init__(self)
         
-        # Load the local chain if applicable
-        if localChainPickle != None and os.path.isfile(localChainPickle):
+        # Find our where to load the local chain from (if applicable)
+        if localChainPickle == None: # if != None, we already know where to load it from
+            localChainPickle = os.path.join(os.getcwd(), "local_chain.pkl")
+        
+        # Load the local chain if it actually exists
+        if os.path.isfile(localChainPickle):
             localChain = pickle.load(open(localChainPickle, "rb"))
             self.chain = localChain
         

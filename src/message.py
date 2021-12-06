@@ -45,8 +45,6 @@ bundleFormat = '''\
 # ---------- END BLOCKCHAIN BUNDLE ---------- #
 '''
 
-emailRegex = re.compile(r"\w+@\w+?\.com") 
-
 # ---------- Unit tests ---------- #
 class TestBundle(unittest.TestCase):
     def test_bundle_can_form(self):
@@ -123,6 +121,7 @@ class Bundle:
         self.responseDict = None
         self.recipients = None
         self.responses = None
+        self.verdict = None
     
     def create_new(self, request, responseDict):
         '''
@@ -149,9 +148,9 @@ class Bundle:
             assert all([response.requestID == request.id for response in self.responses])
             self.verdict = self.make_verdict()
         except:
-            self.verdict = None
+            self.verdict = None # not needed, but just shown for emphasis
     
-    def parse_from_email(self, email_string):
+    def parse_from_email(self, email_string, localBlockchainObj):
         '''
         This function parses an email's contents to see if it can extract a
         valid Bundle from it. If it can, this object will be updated with
@@ -160,6 +159,7 @@ class Bundle:
         
         Arguments:
             email_string -- The contents of an email as text.
+            localBlockchainObj -- The LocalBlockchain instance containing data blocks.
         '''
         email_string = email_string.replace("\r", "")
         
@@ -204,22 +204,35 @@ class Bundle:
             verdict = verdict.replace("\n", " ")
             verdict = verdict.replace("  ", " ")
         
-        # Create the Request (mocked-up)
-        "We can't create an actual Request here since the Bundle lacks some details for this - problem for another time"
+        # Retrieve the logged RequestBlock from the blockchain
+        requestBlock = localBlockchainObj.find_block_by_hash(id)
+        if requestBlock == False: # i.e., if the Request is not logged
+            return False # abort Bundle creation if unlogged
+        
+        # Validate the Bundle
+        if requestBlock.requestID != id or requestBlock.message != message or requestBlock.action != action:
+            return False # abort Bundle creation if logged Request doesn't match
+        self.requestID = requestBlock.requestID
+        self.message = requestBlock.message
+        self.action = requestBlock.action
+        self.date = requestBlock.date
+        
+        # Regenerate the Request object
         request = Request()
         request.create_new(message, action)
-        request.id = id
+        request.id = requestBlock.requestID
+        request.hash = requestBlock.requestID
+        request.date = requestBlock.date
         self.request = request
-        
+
         # Validate recipients and responses
         recipients = recipients.split(", ")
         responses = responses.split(", ")
-        
         if len(recipients) != len(responses):
-            return False
+            return False # abort Bundle creation if email is not formatted correctly
         
         # Create Response objects (mocked-up)
-        "Same as before, we're not making a real Request. It's a problem for another time... (sorry!)"
+        "We're not making a real Request. It's a problem for another time... (sorry!)"
         _responses = []
         for i in range(len(responses)):
             r = Response("")
@@ -341,7 +354,7 @@ class Request:
         try:
             assert action in ACTION_TYPES
         except:
-            print(action)
+            print("{0} not supported".format(action))
         
         # Get the current time and date
         date = time.asctime().replace("  ", " ")
@@ -393,7 +406,6 @@ class Request:
         date, id, message, expectedYes, expectedNo = parse[1], parse[2], parse[3], parse[4].lower(), parse[5].lower() # Make case insensitive
         
         # Remove newlines where needed
-
         while "\n" in date or "  " in date:
             date = date.replace("\n", " ")
             date = date.replace("  ", " ")

@@ -12,7 +12,7 @@ from tkinter import ttk
 from .message import Request, Response, Bundle
 from .api import GmailAPI
 from .stateSingleton import StateSingleton
-from .blockchain import Block
+from .blockchain import BundleBlock, RequestBlock
 from .addressParser import AddressParser
 
 # ---------- Global values ---------- #
@@ -193,12 +193,24 @@ class RequestScreen(BaseFrame):
         
     def create_request(self, messageContents, action):
         # Strip out newlines
-        "Newlines aren't supposed by the Request class"
+        "Newlines aren't supported by the Request class"
         messageContents = messageContents.replace("\r", "").replace("\n", " ") # Crude but it'll do for P.O.C.
         
         # Create request
         request = Request()
         request.create_new(messageContents, action.get().lower())
+        
+        # Write request to blockchain
+        '''
+        This section is newly added to conform to changes for "Proof of
+        Consistent Delivery" in the report. In short, once a user creates
+        a Request, it's immediately added to the blockchain.
+        Propagation of this block is outside the scope of the consensus
+        protocol, however.
+        '''
+        block = RequestBlock(request, self.globals.blockchain.get_last_block().hash)
+        self.globals.blockchain.add_block(block)
+        self.globals.blockchain.save()
         
         # Copy to clipboard
         pyperclip.copy(request.format_request_as_string())
@@ -980,8 +992,8 @@ class CommitBundleScreen(BaseFrame):
         '''
         # Get our bundle
         bundle = Bundle()
-        isValid = bundle.parse_from_email(self.bundleText.get('1.0', tk.END))
-        
+        isValid = bundle.parse_from_email(self.bundleText.get('1.0', tk.END), self.globals.blockchain)
+
         # If the Bundle is invalid...
         if not isValid:
             # ... just set an alert for this
@@ -989,7 +1001,7 @@ class CommitBundleScreen(BaseFrame):
         # If the bundle is valid...
         else:
             # ... create a block
-            block = Block(bundle, self.globals.blockchain.get_last_block().hash)
+            block = BundleBlock(bundle, self.globals.blockchain.get_last_block().hash)
             
             # ... commit it to the blockchain
             "If this isn't added, saving the blockchain will have no effect"

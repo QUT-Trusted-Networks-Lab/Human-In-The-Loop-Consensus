@@ -14,7 +14,6 @@ class AddressParser:
     '''
     def __init__(self, header):
         _headerParse = email.utils.getaddresses(header.split(" "))
-        print(_headerParse)
         
         self.recipients = []
         self._parse_addresses(_headerParse)
