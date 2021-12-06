@@ -2,7 +2,7 @@
 # gui.py
 # Provides the user interface elements for the P.O.C application.
 
-import pyperclip, re
+import pyperclip, re, datetime
 import tkinter as tk
 from tkinter import ttk
 
@@ -63,7 +63,7 @@ class BaseFrame(tk.Frame):
         self.globals.responseSearchPage.update(requestValue)
         self.globals.responseSearchPage.pack()
     
-    def switchToValidRequestRecipientSearch(self, callerSelf, emailAddress, hideOtherSelf=None):
+    def switchToValidRequestRecipientSearch(self, callerSelf, emailAddress, expiryDate, hideOtherSelf=None):
         '''
         Arguments:
             self -- Not used, just needed for BaseFrame storing.
@@ -80,7 +80,7 @@ class BaseFrame(tk.Frame):
             hideOtherSelf.pack_forget()
 
         # Set up the recipient search page
-        self.globals.validRequestRecipientSearch.update(emailAddress)
+        self.globals.validRequestRecipientSearch.update(emailAddress, expiryDate)
         self.globals.validRequestRecipientSearch.show()
 
 class GUI(BaseFrame):
@@ -166,28 +166,63 @@ class RequestScreen(BaseFrame):
         BaseFrame.__init__(self, parent)
         
         # Dropdown state
-        options = ["Approval"]
+        actionOptions = ["Approval"]
         action = tk.StringVar(self)
-        action.set(options[0])
+        action.set(actionOptions[0])
+        
+        expiryOptions = ["Days", "Hours", "Minutes"]
+        self.expiryOpt = tk.StringVar(self)
+        self.expiryOpt.set(expiryOptions[0])
+        
+        # Entry state
+        def isOkay(outcome):
+            '''
+            Performs ttk validation of the expiry entry field to prevent excess input >3.
+            Outcome (%P) will be the string if the change is allowed to occur.
+            '''
+            if len(outcome) > 3:
+                return False
+            elif len(outcome) != 0:
+                try:
+                    int(outcome)
+                except:
+                    return False
+            return True
+        self.entryValue = tk.StringVar(self)
+        self.entryValue.set("1")
+        okayCommand = self.register(isOkay)
         
         # Styling
         PAD_X=10
         PAD_Y=10
+        ENTRY_WIDTH=5
         BOX_WIDTH=60
 
-        # FRAME ROW 1: Dropdown menu to set action
+        # FRAME ROW 1: Menu to set action and expiry length
         row1 = tk.Frame(self)
-        dropdownLabel = ttk.Label(row1, text='Action:'); dropdownLabel.pack(side="left", padx=PAD_X)
-        dropdown = ttk.OptionMenu(row1, action, "", *options, command=lambda selection: action.set(selection)); dropdown.pack(side="left", padx=PAD_X)
+        
+        ## ROW 1.1: Action specification
+        actionLabel = ttk.Label(row1, text='Action:'); actionLabel.pack(side="left", padx=PAD_X)
+        actionDropdown = ttk.OptionMenu(row1, action, "", *actionOptions, command=lambda selection: action.set(selection)); actionDropdown.pack(side="left", padx=PAD_X)
+        
+        ## ROW 1.2: Expiry specification
+        expiryLabel = ttk.Label(row1, text='Expiry Limit:'); expiryLabel.pack(side="left", padx=PAD_X)
+        expiryEntry = ttk.Entry(row1, validate="all", validatecommand=(okayCommand, "%P"), textvariable = self.entryValue, width=ENTRY_WIDTH); expiryEntry.pack(side="left", padx=PAD_X)
+        expiryDropdown = ttk.OptionMenu(row1, self.expiryOpt, "", *expiryOptions, command=lambda selection: self.expiryOpt.set(selection)); expiryDropdown.pack(side="left", padx=PAD_X)
+        
         row1.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
 
         # FRAME ROW 2: Content section to write the request
         requestLabel = ttk.LabelFrame(self, text="Write your request here"); requestLabel.pack(padx=PAD_X, pady=pad_tl(PAD_Y))
         requestEntry = scrolledtext.ScrolledText(requestLabel, width=BOX_WIDTH); requestEntry.pack()
 
-        # Button to copy a format to clipboard
+        # FRAME ROW 3: Button to copy a format to clipboard
         copyButton = ttk.Button(self, text='Copy Request', command=lambda: self.create_request(requestEntry.get('1.0', tk.END), action))
         copyButton.pack(padx=PAD_X, pady=PAD_Y)
+        
+        # FRAME ROW 4: Creation success / failure label
+        self.successMessage = tk.StringVar(self)
+        successLabel = ttk.Label(self, textvariable=self.successMessage); successLabel.pack(padx=PAD_X, pady=pad_tl(PAD_Y))
         
         self.globals.requestScreen = self
         
@@ -196,8 +231,32 @@ class RequestScreen(BaseFrame):
         "Newlines aren't supported by the Request class"
         messageContents = messageContents.replace("\r", "").replace("\n", " ") # Crude but it'll do for P.O.C.
         
+        # Validate that fields are not empty
+        if len(self.entryValue.get()) == 0:
+            self.successMessage.set("Expiry limit must be set!")
+            return
+        else:
+            self.successMessage.set("")
+            
+        if len(messageContents) < 5 or messageContents == None:
+            self.successMessage.set("Message must be set!")
+            return
+        else:
+            self.successMessage.set("")
+        
+        # Format the expiry length
+        print("'{0}'".format(self.expiryOpt.get()))
+        if self.expiryOpt.get() == "Days":
+            expiryLength = "{0}d".format(self.entryValue.get())
+        elif self.expiryOpt.get() == "Hours":
+            expiryLength = "{0}h".format(self.entryValue.get())
+        else:
+            expiryLength = "{0}m".format(self.entryValue.get())
+        
+        print(expiryLength)
+        
         # Create request
-        request = Request()
+        request = Request(expiryLength)
         request.create_new(messageContents, action.get().lower())
         
         # Write request to blockchain
@@ -441,7 +500,7 @@ class ResponseSearchPage(BaseFrame):
         
         # FRAME ROW 3: Date state values
         row3 = tk.Frame(self)
-        dateDescription = ttk.Label(row3, text="Date: "); dateDescription.pack(side="left")
+        dateDescription = ttk.Label(row3, text="Sent Date: "); dateDescription.pack(side="left")
         dateLabel = ttk.Label(row3, textvariable=self.date); dateLabel.pack(side="left", padx=pad_tl(PAD_X))
         row3.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
         
@@ -539,6 +598,7 @@ class ValidRequestWidget(BaseFrame):
         
         # Widget state
         self.message = tk.StringVar(self)
+        self.expiry = tk.StringVar(self)
         self.expected_response1 = tk.StringVar(self)
         self.expected_response2 = tk.StringVar(self)
         
@@ -564,6 +624,12 @@ class ValidRequestWidget(BaseFrame):
         orLabel = ttk.Label(row3, text="OR"); orLabel.pack(side="left", padx=pad_tl(int(PAD_X/2)))
         actionLabel2 = ttk.Label(row3, textvariable=self.expected_response2); actionLabel2.pack(side="left", padx=pad_tl(int(PAD_X/2)))
         row3.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
+        
+        # FRAME ROW 4: Expiry state values
+        row4 = tk.Frame(self)
+        expiryDescription = ttk.Label(row4, text="Expiry: "); expiryDescription.pack(side="left")
+        expiryLabel = ttk.Label(row4, textvariable=self.expiry); expiryLabel.pack(side="left", padx=pad_tl(PAD_X))
+        row4.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
         
         # Display table to select responses to retrieve
         tree = ttk.Treeview(self, column=("Recipient", "Processed"), show='headings')
@@ -602,6 +668,7 @@ class ValidRequestWidget(BaseFrame):
         
         # Set object state variables
         self.message.set(self.globals.request.message)
+        self.expiry.set(self.globals.request.expiry)
         
         _expected_responses = self.globals.request.get_expected_responses()
         self.expected_response1.set(_expected_responses[0].capitalize())
@@ -631,7 +698,7 @@ class ValidRequestWidget(BaseFrame):
             # Switch to the recipient search page and pass along the row value
             "We only switch screens if value is No, since Yes indicates that a Response was found already"
             if processed == "No":
-                self.switchToValidRequestRecipientSearch(self, email, self.globals.validRequestWidget)
+                self.switchToValidRequestRecipientSearch(self, email, self.expiry.get(), self.globals.validRequestWidget)
         except:
             "If this happens, the user clicked a blank row, shouldn't be a big deal"
             pass
@@ -689,6 +756,7 @@ class ValidRequestRecipientSearch(BaseFrame):
 
         # Store component variables
         self.emailAddress = tk.StringVar(self)
+        self.expiry = tk.StringVar(self)
         
         # Styling
         PAD_X=10
@@ -699,18 +767,24 @@ class ValidRequestRecipientSearch(BaseFrame):
         self.searchTable = RecipientSearchResultsTable(self)
         self.searchTable.pack(padx=PAD_X, pady=PAD_Y)
         self.searchTable.pack_forget()
-
-        # FRAME ROW 1: Header message for search bar
+        
+        # FRAME ROW 1: Expiry state values
+        row1 = tk.Frame(self)
+        expiryDescription = ttk.Label(row1, text="Expiry: "); expiryDescription.pack(side="left")
+        expiryLabel = ttk.Label(row1, textvariable=self.expiry); expiryLabel.pack(side="left", padx=pad_tl(PAD_X))
+        row1.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
+        
+        # FRAME ROW 2: Header message for search bar
         searchLabel = ttk.Label(self, text='Search for Response')
         searchLabel.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
 
-        # FRAME ROW 2: Search bar for finding a request email
-        row2 = tk.Frame(self)
-        searchBar = ttk.Entry(row2, width=ENTRY_WIDTH); searchBar.pack(side="left", padx=pad_br(PAD_X))
-        searchButton = ttk.Button(row2, text="Search", command=lambda: self.search_for_responses(searchBar.get())); searchButton.pack(side="left")
-        row2.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
+        # FRAME ROW 3: Search bar for finding a request email
+        row3 = tk.Frame(self)
+        searchBar = ttk.Entry(row3, width=ENTRY_WIDTH); searchBar.pack(side="left", padx=pad_br(PAD_X))
+        searchButton = ttk.Button(row3, text="Search", command=lambda: self.search_for_responses(searchBar.get())); searchButton.pack(side="left")
+        row3.pack(anchor="w", padx=PAD_X, pady=pad_tl(PAD_Y))
 
-        # FRAME ROW 3: Button to go back to Response search
+        # FRAME ROW 4: Button to go back to Response search
         self.goBackButton = ttk.Button(
             self,
             text = 'Go Back',
@@ -725,12 +799,13 @@ class ValidRequestRecipientSearch(BaseFrame):
         
         self.globals.validRequestRecipientSearch = self
     
-    def update(self, emailAddress):
+    def update(self, emailAddress, expiry):
         '''
         Make this component aware of the email address of the Leader so we can
         filter results to only show ones sent from them.
         '''
         self.emailAddress.set(emailAddress)
+        self.expiry.set(expiry)
 
     def search_for_responses(self, query):
         # Prevent dumb requests
@@ -753,7 +828,11 @@ class ValidRequestRecipientSearch(BaseFrame):
             if emailAddress.lower() != self.emailAddress.get():
                 continue
             else:
-                searchResult.append(r)
+                # Expiry date modification: don't list results past the expiry time
+                _sendDate = datetime.datetime.strptime(date, "%c")
+                _expiryDate = datetime.datetime.strptime(self.expiry.get(), "%c")
+                if _sendDate < _expiryDate:
+                    searchResult.append(r)
         
         # Pass results to our search display table and trigger its display
         PAD_X = 10

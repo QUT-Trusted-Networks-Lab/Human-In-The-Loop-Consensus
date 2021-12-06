@@ -2,7 +2,7 @@
 # message.py
 # Provides request and response objects for the P.O.C application.
 
-import re, time, json, unittest
+import re, time, json, unittest, datetime
 from hashlib import sha256
 
 # ---------- Global values ---------- #
@@ -13,12 +13,15 @@ DERIVE_ACTION_TYPES_FROM_EXPECTED = {
     "['i approve', 'i disapprove']": "approval"
 }
 
+EXPIRY_REGEX = re.compile("^\d{1,3}[dhm]$")
+
 messageFormat = '''\
 # ---------- START BLOCKCHAIN REQUEST ---------- #
 # MESSAGE DATE: {0}
-# MESSAGE ID: {1}
-# MESSAGE CONTENTS: {2}
-# ACTION REQUESTED: {3}
+# EXPIRY DATE: {1}
+# MESSAGE ID: {2}
+# MESSAGE CONTENTS: {3}
+# ACTION REQUESTED: {4}
 # ---------- END BLOCKCHAIN REQUEST ---------- #
 '''
 
@@ -333,11 +336,33 @@ class Request:
     Request instances represent a leader's proposed Request. This class primarily
     assists in formatting a valid message to send in an email to recipients.
     '''
-    def __init__(self):
-        self.date = None
+    def __init__(self, expiryLength="12h"):
+        assert EXPIRY_REGEX.match(expiryLength) != None
+        
+        self.expiryLength = expiryLength
         self.id = None
         self.message = None
         self.action = None
+        self._compute_times()
+    
+    def _compute_times(self):
+        # Get the current time and date
+        currentTimeStamp = time.time()
+        currentTime = datetime.datetime.fromtimestamp(currentTimeStamp)
+        date = datetime.datetime.ctime(currentTime).replace("  ", " ")
+        
+        # Get the time from now + expiry length
+        if "d" in self.expiryLength:
+            delta = datetime.timedelta(days = int(self.expiryLength[:-1]))
+        elif "h" in self.expiryLength:
+            delta = datetime.timedelta(hours = int(self.expiryLength[:-1]))
+        else:
+            delta = datetime.timedelta(minutes = int(self.expiryLength[:-1]))
+        expiry = datetime.datetime.ctime(currentTime + delta).replace("  ", " ")
+        
+        # Save to instance fields
+        self.date = date
+        self.expiry = expiry
     
     def create_new(self, messageContents, action):
         '''
@@ -356,18 +381,14 @@ class Request:
         except:
             print("{0} not supported".format(action))
         
-        # Get the current time and date
-        date = time.asctime().replace("  ", " ")
-        
         # Remove newlines from messageContents
         "We can't support newlines with the regex-based parsing that we have"
         messageContents = messageContents.replace("\r", "").replace("\n", " ").strip(" ")
         
         # Hash the message contents and date to serve as our message ID
-        messageHash = self.get_message_hash(messageContents, date)
+        messageHash = self.get_message_hash(messageContents, self.date)
         
         # Store values as object attributes
-        self.date = date
         self.id = messageHash
         self.message = messageContents
         self.action = action
@@ -397,16 +418,19 @@ class Request:
         
         # Parse the block to find our message contents
         parseRegex = re.compile(
-            r"^#.+?MESSAGE.DATE:.+?(.+?)\n#.+?MESSAGE.+?ID:.+?(.+?)\n#.+?MESSAGE.+?CONTENTS:.+?(.+?)\n#.+?ACTION.+?REQUESTED:.+?\n#.+?Edit.+?the.+?MESSAGE.+?RESPONSE.+?field.+?to.+?say.+?\"(I.+?[A-Za-z]+?)\".+?if.+?YES,.+?or.+?\"(I.+?[A-Za-z]+?)\".+?if.+?NO"
+            r"^#.+?MESSAGE.DATE:.+?(.+?)\n#.+?EXPIRY.+?DATE:.+?(.+?)\n#.+?MESSAGE.+?ID:.+?(.+?)\n#.+?MESSAGE.+?CONTENTS:.+?(.+?)\n#.+?ACTION.+?REQUESTED:.+?\n#.+?Edit.+?the.+?MESSAGE.+?RESPONSE.+?field.+?to.+?say.+?\"(I.+?[A-Za-z]+?)\".+?if.+?YES,.+?or.+?\"(I.+?[A-Za-z]+?)\".+?if.+?NO"
         , re.DOTALL)
         parse = parseRegex.search(requestBlock)
         if parse == None:
             return False
 
-        date, id, message, expectedYes, expectedNo = parse[1], parse[2], parse[3], parse[4].lower(), parse[5].lower() # Make case insensitive
+        date, expiry, id, message, expectedYes, expectedNo = parse[1], parse[2], parse[3], parse[4], parse[5].lower(), parse[6].lower() # Make case insensitive
         
         # Remove newlines where needed
         while "\n" in date or "  " in date:
+            date = date.replace("\n", " ")
+            date = date.replace("  ", " ")
+        while "\n" in expiry or "  " in expiry:
             date = date.replace("\n", " ")
             date = date.replace("  ", " ")
         while "\n" in id or "  " in id:
@@ -435,6 +459,7 @@ class Request:
         
         # Store values as object attributes
         self.date = date
+        self.expiry = expiry
         self.id = id
         self.message = message
         self.action = action
@@ -467,6 +492,7 @@ class Request:
         message = "{0}\n\n{1}".format(
             messageFormat.format(
                 self.date,
+                self.expiry,
                 self.id,
                 self.message, 
                 actionFormat.format(yes, no)
