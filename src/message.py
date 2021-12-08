@@ -2,7 +2,8 @@
 # message.py
 # Provides request and response objects for the P.O.C application.
 
-import re, time, json, unittest, datetime
+import time, datetime
+import re, json, unittest
 from hashlib import sha256
 
 # ---------- Global values ---------- #
@@ -346,6 +347,12 @@ class Request:
         self._compute_times()
     
     def _compute_times(self):
+        # Get timezone
+        timezoneOffsetInSeconds = time.localtime().tm_gmtoff
+        timezoneOffsetInHours = timezoneOffsetInSeconds / 60 / 60
+        timezoneOffset = str(abs(timezoneOffsetInHours)).replace(".", "").ljust(4, "0")
+        timezoneOffset = "+{0}".format(timezoneOffset) if timezoneOffsetInHours >= 0 else "-{0}".format(timezoneOffset)
+        
         # Get the current time and date
         currentTimeStamp = time.time()
         currentTime = datetime.datetime.fromtimestamp(currentTimeStamp)
@@ -359,6 +366,10 @@ class Request:
         else:
             delta = datetime.timedelta(minutes = int(self.expiryLength[:-1]))
         expiry = datetime.datetime.ctime(currentTime + delta).replace("  ", " ")
+        
+        # Add timezone offsets
+        date = "{0} {1}".format(date, timezoneOffset)
+        expiry = "{0} {1}".format(expiry, timezoneOffset)
         
         # Save to instance fields
         self.date = date

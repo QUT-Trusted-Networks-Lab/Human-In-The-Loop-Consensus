@@ -96,8 +96,8 @@ class GmailAPI:
                     name = header.get("name")
                     value = header.get("value")
                     if name.lower() == "date":
-                        regexSearch = re.search(r"^(\w+?), (\d{1,2}) (\w+?) (\d{4}) (\d{2}:\d{2}:\d{2})", value)
-                        date = "{0} {1} {2} {3} {4}".format(regexSearch[1], regexSearch[3], regexSearch[2], regexSearch[5], regexSearch[4]) # reorder for datetime equivalent
+                        regexSearch = re.search(r"^(\w+?), (\d{1,2}) (\w+?) (\d{4}) (\d{2}:\d{2}:\d{2}) ([\+\-]\d{4})", value)
+                        date = "{0} {1} {2} {3} {4} {5}".format(regexSearch[1], regexSearch[3], regexSearch[2], regexSearch[5], regexSearch[4], regexSearch[6]) # reorder for datetime equivalent
                     if name.lower() == "from":
                         sender = value
                     if name.lower() == "subject":

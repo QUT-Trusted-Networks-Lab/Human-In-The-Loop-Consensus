@@ -245,16 +245,13 @@ class RequestScreen(BaseFrame):
             self.successMessage.set("")
         
         # Format the expiry length
-        print("'{0}'".format(self.expiryOpt.get()))
         if self.expiryOpt.get() == "Days":
             expiryLength = "{0}d".format(self.entryValue.get())
         elif self.expiryOpt.get() == "Hours":
             expiryLength = "{0}h".format(self.entryValue.get())
         else:
             expiryLength = "{0}m".format(self.entryValue.get())
-        
-        print(expiryLength)
-        
+                
         # Create request
         request = Request(expiryLength)
         request.create_new(messageContents, action.get().lower())
@@ -829,8 +826,9 @@ class ValidRequestRecipientSearch(BaseFrame):
                 continue
             else:
                 # Expiry date modification: don't list results past the expiry time
-                _sendDate = datetime.datetime.strptime(date, "%c")
-                _expiryDate = datetime.datetime.strptime(self.expiry.get(), "%c")
+                _sendDate = datetime.datetime.strptime(date, "%c %z")
+                _expiryDate = datetime.datetime.strptime(self.expiry.get(), "%c %z")
+                
                 if _sendDate < _expiryDate:
                     searchResult.append(r)
         
