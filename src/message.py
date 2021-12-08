@@ -146,10 +146,14 @@ class Bundle:
         self.responseDict = responseDict
         self.recipients = list(responseDict.keys())
         self.responses = list(responseDict.values())
-            
+                    
         # Validate the bundle
         try:
-            assert all([response.requestID == request.id for response in self.responses])
+            '''
+            This code is being updated to allow None Responses. The reason is to allow Responses to be
+            marked as "absent" which corresponds to a Response of None.
+            '''
+            assert all([response == None or response.requestID == request.id for response in self.responses])
             self.verdict = self.make_verdict()
         except:
             self.verdict = None # not needed, but just shown for emphasis
@@ -279,7 +283,9 @@ class Bundle:
         # Tally the responses
         tally = []
         for response in self.responses:
-            if response.responseContents.lower() == yes:
+            if response == None:
+                tally.append(False)
+            elif response.responseContents.lower() == yes:
                 tally.append(True)
             elif response.responseContents.lower() == no:
                 tally.append(False)
@@ -309,7 +315,7 @@ class Bundle:
                 self.request.message,
                 self.request.action,
                 ", ".join(self.recipients),
-                ", ".join([r.responseContents for r in self.responses]),
+                ", ".join(["No response" if r == None else r.responseContents for r in self.responses]),
                 "ACCEPTED" if self.verdict else "REJECTED"
             )
         else:

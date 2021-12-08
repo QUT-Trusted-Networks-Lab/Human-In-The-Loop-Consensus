@@ -520,7 +520,7 @@ class ResponseSearchPage(BaseFrame):
         self.iReqWidget = InvalidRequestWidget(self)
         self.iReqWidget.pack()
         self.iReqWidget.pack_forget()
-        
+
         self.globals.responseSearchPage = self
     
     def update(self, requestValue):
@@ -794,6 +794,17 @@ class ValidRequestRecipientSearch(BaseFrame):
         )
         self.goBackButton.pack(padx=PAD_X, pady=PAD_Y)
         
+        # FRAME ROW 5: Button to mark response as absent
+        self.absentButton = ttk.Button(
+            self,
+            text = 'Response not received',
+            command = lambda: (
+                self.pack_forget(),
+                self.mark_absent(self.emailAddress.get())
+            )
+        )
+        self.absentButton.pack(padx = PAD_X, pady = PAD_Y)
+        
         self.globals.validRequestRecipientSearch = self
     
     def update(self, emailAddress, expiry):
@@ -837,6 +848,32 @@ class ValidRequestRecipientSearch(BaseFrame):
         PAD_Y = 10
         self.globals.recipientSearchResultsTable.update(searchResult)
         self.globals.recipientSearchResultsTable.pack(padx=PAD_X, pady=PAD_Y)
+    
+    def mark_absent(self, sender):
+        # Store a null response in our global object
+        self.globals.responses[sender] = None
+
+        # Update the responses table
+        self.globals.validRequestWidget.update()
+
+        # Check to see how many responses we have
+        totalRecipients = self.globals.recipients.count("@") # This should give the number of recipients
+        obtainedRecipients = len(self.globals.responses)
+
+        # If we need to find more responses...
+        if obtainedRecipients < totalRecipients:
+            # Switch back to response search search without messing with state
+            self.hide()
+            self.globals.responseScreen.show_tally()
+            self.globals.responseSearchPage.show()
+        # If we've found all responses...
+        else:
+            # Hide existing elements
+            self.globals.responseScreen.hide() # This will cascade down..?
+            
+            # Switch to our bundling page
+            self.globals.root.show_create_bundle()
+            self.globals.createBundleScreen.update()
     
     def show(self):
         self.pack()
